@@ -72,7 +72,7 @@ void nn_learn(NN nn, NN g, float rate);
 
 #endif // __NN_H
 
-#ifndef NN_IMPLEMENTATION
+#ifdef NN_IMPLEMENTATION
 
 float rand_float() {
   return (float)rand() / (float)RAND_MAX;
@@ -264,31 +264,6 @@ float nn_cost(NN nn, Mat ti, Mat to) {
 
   return c/n;
 
-}
-
-float gcost(float w1, float w2, float b, float *dw1, float *dw2, float *db) {
-  *dw1 = 0;
-  *dw2 = 0;
-  *db = 0;
-
-  size_t num_data = 3;
-  float train[][3] = {
-       {0, 0, 0,},};
-
-  size_t n = num_data;
-  for (size_t i = 0;i<n;i++)  {
-    float xi = train[i][0];
-    float yi = train[i][1];
-    float zi = train[i][2];
-    float ai = sigmoidf(xi*w1 + yi*w2 +b);
-    float di = 2*(ai - zi)*ai*(1-ai);
-    *dw1 += di*xi;
-    *dw2 += di*yi;
-    *db += di;
-  }
-  *dw1 /= n;
-  *dw2 /= n;
-  *db /= n;
 }
 
 void nn_finite_diff(NN nn, NN g, float eps, Mat ti, Mat to) {
