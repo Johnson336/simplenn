@@ -38,6 +38,9 @@ typedef struct {
 #define ARRAY_LEN(xs) sizeof((xs))/sizeof((xs)[0])
 float rand_float();
 float sigmoidf(float x);
+float relu(float x);
+float leaky_relu(float x);
+float swish(float x);
 
 // Mat function declares
 Mat mat_alloc(size_t rows, size_t cols);
@@ -49,6 +52,9 @@ void mat_rand(Mat m, float low, float high);
 Mat mat_row(Mat m, size_t row);
 void mat_copy(Mat dst, Mat src);
 void mat_sig(Mat m);
+void mat_relu(Mat m);
+void mat_leaky_relu(Mat m);
+void mat_swish(Mat m);
 #define MAT_PRINT(m) mat_print(m, #m, 0)
 #define MAT_AT(m, i, j) (m).es[(i)*(m).stride + (j)]
 
@@ -78,6 +84,18 @@ float rand_float() {
   return (float)rand() / (float)RAND_MAX;
 }
 
+float swish(float x) {
+  return x / (1.f + expf(-x));
+}
+
+float leaky_relu(float x) {
+  return fmaxf(0.1f*x, x);
+}
+
+float relu(float x) {
+  return fmaxf(0, x);
+  // return (x > 0 ? x : 0);
+}
 float sigmoidf(float x) {
   return 1.f / (1.f + expf(-x));
 }
@@ -163,6 +181,30 @@ void mat_rand(Mat m, float low, float high) {
   }
 }
 
+void mat_relu(Mat m) {
+  for (size_t i = 0; i < m.rows; i++) {
+    for (size_t j = 0; j < m.cols; j++) {
+      MAT_AT(m, i, j) = relu(MAT_AT(m, i, j));
+    }
+  }
+}
+
+void mat_leaky_relu(Mat m) {
+  for (size_t i = 0; i < m.rows; i++) {
+    for (size_t j = 0; j < m.cols; j++) {
+      MAT_AT(m, i, j) = relu(MAT_AT(m, i, j));
+    }
+  }
+}
+
+void mat_swish(Mat m) {
+  for (size_t i = 0; i < m.rows; i++) {
+    for (size_t j = 0; j < m.cols; j++) {
+      MAT_AT(m, i, j) = swish(MAT_AT(m, i, j));
+    }
+  }
+}
+
 void mat_sig(Mat m) {
   for (size_t i = 0; i < m.rows; i++) {
     for (size_t j = 0; j < m.cols; j++) {
@@ -178,11 +220,11 @@ NN nn_alloc(size_t *arch, size_t arch_count) {
   NN nn;
   nn.count = arch_count - 1;
 
-  nn.ws = NN_MALLOC(sizeof(*nn.ws)*nn.count);
+  nn.ws = (Mat *)NN_MALLOC(sizeof(*nn.ws)*nn.count);
   NN_ASSERT(nn.ws != NULL);
-  nn.bs = NN_MALLOC(sizeof(*nn.bs)*nn.count);
+  nn.bs = (Mat *)NN_MALLOC(sizeof(*nn.bs)*nn.count);
   NN_ASSERT(nn.bs != NULL);
-  nn.as = NN_MALLOC(sizeof(*nn.as)*(nn.count + 1));
+  nn.as = (Mat *)NN_MALLOC(sizeof(*nn.as)*(nn.count + 1));
   NN_ASSERT(nn.as != NULL);
 
   nn.as[0] = mat_alloc(1, arch[0]);
@@ -239,8 +281,8 @@ void nn_forward(NN nn) {
     mat_dot(nn.as[i+1], nn.as[i], nn.ws[i]);
     mat_sum(nn.as[i+1], nn.bs[i]);
     mat_sig(nn.as[i+1]);
+    //mat_relu(nn.as[i+1]);
   }
-
 }
 
 float nn_cost(NN nn, Mat ti, Mat to) {

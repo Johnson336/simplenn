@@ -43,7 +43,6 @@ int main(void) {
     .es = td_xor + 2,
   };
 
-  float eps = 1e-1;
   float rate = 1;
 
   size_t arch[] = {2, 4, 1};
@@ -54,6 +53,7 @@ int main(void) {
   printf("cost = %f\n", nn_cost(nn, ti, to));
   for (size_t i = 0;i < 1000;i++) {
 #if 0
+    float eps = 1e-1;
     nn_finite_diff(nn, g, eps, ti, to);
 #else
     nn_backprop(nn, g, ti, to);

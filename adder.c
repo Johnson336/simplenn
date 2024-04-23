@@ -3,7 +3,72 @@
 #include "nn.h"
 #include <time.h>
 
+#include "/usr/local/include/raylib.h"
+
 #define BITS 4
+
+float width = 1600;
+float height = 1200;
+
+
+
+Color mixColors(Color c1, Color c2, float amt) {
+  return (Color) {
+    ((c1.r * amt) + (c2.r * (1-amt))),
+    ((c1.g * amt) + (c2.g * (1-amt))),
+    ((c1.b * amt) + (c2.b * (1-amt))),
+    255
+  };
+}
+
+// x == l
+// y == i
+// i == j
+
+void nn_draw(NN nn) {
+  int cols = nn.count+1;
+  //int startcol = (width - 40) / cols;
+  int maxrows = 0;
+  for (int i=0;i<cols;i++) {
+    if (nn.as[i].cols > maxrows) {
+       maxrows = nn.as[i].cols;
+    }
+  }
+  float neuron_radius = fminf(height / (maxrows*4), 25.0f);
+  int pad_x = width / (cols + 2);
+  int nn_x_start = pad_x + (pad_x/2);
+  int pad_y = height / ((maxrows + 2));
+  DrawRectangleLines(pad_x, pad_y, width-pad_x*2, height-pad_y*2, RAYWHITE);
+  for (size_t x = 0;x < cols; x++) {
+    int rows = nn.as[x].cols;
+    int nn_y_start = pad_y + ((pad_y/2) * ((maxrows+1) - rows));
+    Color low_color = {0, 0, 255, 255};
+    Color high_color = {0, 255, 0, 255};
+    Color color = {};
+    for (size_t y = 0;y < rows;y++) {
+      if (x == 0) {
+        // first column is gray
+        color = GRAY;
+      } else {
+        // second column and up are colored by their bias
+        float amt = sigmoidf(MAT_AT(nn.bs[x-1], 0, y));
+        color = mixColors(low_color, high_color, amt);
+      }
+      DrawCircle(nn_x_start + x * pad_x, nn_y_start + (y * pad_y), neuron_radius, color);
+      if (x > 0) {
+        int prev_rows = nn.as[x-1].cols;
+        int prev_layer_y_start = pad_y + ((pad_y/2) * ((maxrows+1) - prev_rows));
+        for (size_t i = 0;i < prev_rows;i++) {
+          float amt = sigmoidf(MAT_AT(nn.ws[x-1], i, y));
+          Color linecolor = mixColors(low_color, high_color, amt);
+          DrawLine(nn_x_start + ((x-1) * pad_x), prev_layer_y_start + (i * pad_y), nn_x_start + x * pad_x, nn_y_start + (y * pad_y), linecolor);
+        }
+      }
+    }
+  }
+
+
+}
 
 int main() {
   srand(time(0));
@@ -24,53 +89,75 @@ int main() {
   }
 
 
-  size_t arch[] = {2*BITS, 4*BITS, BITS + 1};
+  size_t arch[] = {2*BITS, 4*BITS, 6*BITS, BITS+1};
+  //size_t arch[] = {28*28, 16, 16, 10};
   NN nn = nn_alloc(arch, ARRAY_LEN(arch));
   NN g = nn_alloc(arch,ARRAY_LEN(arch));
-  nn_rand(nn, 0, 1);
   NN_PRINT(nn);
-
   float rate = 1;
+
+  int iter = 0;
+  InitWindow(width, height, "NN Raylib");
+  while (!WindowShouldClose()) {
+    if (iter > 20*1000) {
+      //NN_PRINT(nn);
+      size_t fails = 0;
+      for (size_t x = 0;x < n;x++) {
+        for (size_t y = 0;y < n;y++) {
+          size_t z = x + y;
+          for (size_t j = 0;j< BITS;j++) {
+            MAT_AT(NN_INPUT(nn), 0, j)      = (x>>j)&1;
+            MAT_AT(NN_INPUT(nn), 0, j+BITS) = (y>>j)&1;
+          }
+          nn_forward(nn);
+          if (MAT_AT(NN_OUTPUT(nn), 0, BITS) > 0.5f) {
+            if (z < n) {
+              printf("%zu + %zu = (OVERFLOW<>%zu)\n", x, y, z);
+              fails++;
+            }
+          } else {
+            size_t a = 0;
+            for (size_t j = 0;j < BITS;j++) {
+              size_t bit = MAT_AT(NN_OUTPUT(nn), 0, j) > 0.5f;
+              a |= bit<<j;
+            }
+            if (z != a) {
+              printf("%zu + %zu = (%zu<>%zu)\n", x, y, z, a);
+              fails++;
+            }
+          }
+        }
+      }
+      //NN_PRINT(nn);
+      //NN_PRINT(g);
+      if (fails == 0) printf("OK\n");
+
+      nn_rand(nn, 0, 1);
+      iter = 0;
+    }
+    iter++;
+    BeginDrawing();
+    ClearBackground(BLACK);
+    DrawText("NN Raylib", 10, 10, 30, RAYWHITE);
+    DrawText(TextFormat("Iter: %d", iter), 10, 50, 30, RAYWHITE);
+    DrawText(TextFormat("Cost: %f", nn_cost(nn, ti, to)), 10, 90, 30, RAYWHITE);
+    nn_backprop(nn, g, ti, to);
+    nn_learn(nn, g, rate);
+    nn_draw(nn);
+    EndDrawing();
+  }
+  CloseWindow();
+  return 0;
+
 
   printf("cost = %f\n", nn_cost(nn, ti, to));
   for (size_t i = 0 ;i < 10*1000;i++) {
-    #if 1
     nn_backprop(nn, g, ti, to);
-    #else
-    nn_finite_diff(nn, g, rate, ti, to);
-    #endif
+    //nn_finite_diff(nn, g, rate, ti, to);
     nn_learn(nn, g, rate);
     printf("cost = %f\n", nn_cost(nn, ti, to));
   }
 
-  size_t fails = 0;
-  for (size_t x = 0;x < n;x++) {
-    for (size_t y = 0;y < n;y++) {
-      size_t z = x + y;
-      for (size_t j = 0;j< BITS;j++) {
-        MAT_AT(NN_INPUT(nn), 0, j)      = (x>>j)&1;
-        MAT_AT(NN_INPUT(nn), 0, j+BITS) = (y>>j)&1;
-      }
-      nn_forward(nn);
-      if (MAT_AT(NN_OUTPUT(nn), 0, BITS) > 0.5f) {
-        if (z < n) {
-          printf("%zu + %zu = (OVERFLOW<>%zu)\n", x, y, z);
-          fails++;
-        }
-      } else {
-        size_t a = 0;
-        for (size_t j = 0;j < BITS;j++) {
-          size_t bit = MAT_AT(NN_OUTPUT(nn), 0, j) > 0.5f;
-          a |= bit<<j;
-        }
-        if (z != a) {
-          printf("%zu + %zu = (%zu<>%zu)\n", x, y, z, a);
-          fails++;
-        }
-      }
-    }
-  }
-  if (fails == 0) printf("OK\n");
   return 0;
 }
 
