@@ -24,6 +24,8 @@ Color mixColors(Color c1, Color c2, float amt) {
 // x == l
 // y == i
 // i == j
+Color low_color = {0, 0, 0, 0};
+Color high_color = {255, 0, 180, 255};
 
 void nn_draw(NN nn) {
   int cols = nn.count+1;
@@ -42,8 +44,6 @@ void nn_draw(NN nn) {
   for (size_t x = 0;x < cols; x++) {
     int rows = nn.as[x].cols;
     int nn_y_start = pad_y + ((pad_y/2) * ((maxrows+1) - rows));
-    Color low_color = {0, 0, 0, 0};
-    Color high_color = {255, 0, 180, 255};
     Color color = {};
     for (size_t y = 0;y < rows;y++) {
       if (x == 0) {
@@ -66,8 +66,25 @@ void nn_draw(NN nn) {
       }
     }
   }
+}
 
-
+void ProcessInput() {
+  if (IsKeyPressed(KEY_X)) {
+    high_color = (Color){
+      GetRandomValue(1, 255),
+      GetRandomValue(1, 255),
+      GetRandomValue(1, 255),
+      GetRandomValue(1, 255)
+    };
+  }
+  if (IsKeyPressed(KEY_C)) {
+    low_color = (Color){
+      GetRandomValue(1, 255),
+      GetRandomValue(1, 255),
+      GetRandomValue(1, 255),
+      GetRandomValue(1, 255)
+    };
+  }
 }
 
 int main() {
@@ -106,17 +123,18 @@ int main() {
     if (iter == 0) {
       //NN_PRINT(nn);
       // Create new NN architecture of random size
-      size_t columns = GetRandomValue(0, 6);
+      size_t columns = GetRandomValue(1, 6);
       size_t arch[columns+2];
       arch[0] = 2*BITS;
       arch[columns+1] = BITS+1;
       for (size_t i = 1;i<columns+1;i++) {
-        arch[i] = GetRandomValue(1, 6*BITS);
+        arch[i] = GetRandomValue(BITS, 10*BITS);
       }
       nn = nn_alloc(arch, ARRAY_LEN(arch));
       g = nn_alloc(arch, ARRAY_LEN(arch));
       nn_rand(nn, -1, 1);
     }
+    ProcessInput();
     BeginDrawing();
     ClearBackground(BLACK);
     DrawText("NN Raylib", 10, 10, 30, RAYWHITE);
