@@ -17,7 +17,7 @@ Color mixColors(Color c1, Color c2, float amt) {
     ((c1.r * amt) + (c2.r * (1-amt))),
     ((c1.g * amt) + (c2.g * (1-amt))),
     ((c1.b * amt) + (c2.b * (1-amt))),
-    255
+    ((c1.a * amt) + (c2.a * (1-amt)))
   };
 }
 
@@ -42,8 +42,8 @@ void nn_draw(NN nn) {
   for (size_t x = 0;x < cols; x++) {
     int rows = nn.as[x].cols;
     int nn_y_start = pad_y + ((pad_y/2) * ((maxrows+1) - rows));
-    Color low_color = {0, 0, 255, 255};
-    Color high_color = {0, 255, 0, 255};
+    Color low_color = {0, 0, 0, 0};
+    Color high_color = {255, 0, 180, 255};
     Color color = {};
     for (size_t y = 0;y < rows;y++) {
       if (x == 0) {
@@ -89,18 +89,53 @@ int main() {
   }
 
 
-  size_t arch[] = {2*BITS, 4*BITS, 6*BITS, BITS+1};
+  //size_t arch[] = {2*BITS, 4*BITS, 6*BITS, BITS+1};
   //size_t arch[] = {28*28, 16, 16, 10};
-  NN nn = nn_alloc(arch, ARRAY_LEN(arch));
-  NN g = nn_alloc(arch,ARRAY_LEN(arch));
-  NN_PRINT(nn);
+  //NN nn = nn_alloc(arch, ARRAY_LEN(arch));
+  //NN g = nn_alloc(arch,ARRAY_LEN(arch));
+  NN nn;
+  NN g;
+  size_t arch[] = {};
+  //NN_PRINT(nn);
   float rate = 1;
 
+  float mincost = 10.0f;
   int iter = 0;
   InitWindow(width, height, "NN Raylib");
   while (!WindowShouldClose()) {
-    if (iter > 20*1000) {
+    if (iter == 0) {
       //NN_PRINT(nn);
+      // Create new NN architecture of random size
+      size_t columns = GetRandomValue(0, 6);
+      size_t arch[columns+2];
+      arch[0] = 2*BITS;
+      arch[columns+1] = BITS+1;
+      for (size_t i = 1;i<columns+1;i++) {
+        arch[i] = GetRandomValue(1, 6*BITS);
+      }
+      nn = nn_alloc(arch, ARRAY_LEN(arch));
+      g = nn_alloc(arch, ARRAY_LEN(arch));
+      nn_rand(nn, -1, 1);
+    }
+    BeginDrawing();
+    ClearBackground(BLACK);
+    DrawText("NN Raylib", 10, 10, 30, RAYWHITE);
+    DrawText(TextFormat("Iter: %d", iter), 10, 50, 30, RAYWHITE);
+    DrawText(TextFormat("Cost: %f", nn_cost(nn, ti, to)), 10, 90, 30, RAYWHITE);
+    nn_backprop(nn, g, ti, to);
+    nn_learn(nn, g, rate);
+    nn_draw(nn);
+    EndDrawing();
+
+    iter++;
+    if (iter > 20*1000 || nn_cost(nn, ti, to) < 0.001f) {
+      printf("Iters: %d\tFinal cost: %f\tArch: {", iter, nn_cost(nn, ti, to));
+      for (size_t i=0;i<nn.count+1;i++) {
+        printf(" %zu", nn.as[i].cols);
+      }
+      printf(" }\n");
+      iter = 0;
+      // display validation data
       size_t fails = 0;
       for (size_t x = 0;x < n;x++) {
         for (size_t y = 0;y < n;y++) {
@@ -112,7 +147,7 @@ int main() {
           nn_forward(nn);
           if (MAT_AT(NN_OUTPUT(nn), 0, BITS) > 0.5f) {
             if (z < n) {
-              printf("%zu + %zu = (OVERFLOW<>%zu)\n", x, y, z);
+              //printf("%zu + %zu = (OVERFLOW<>%zu)\n", x, y, z);
               fails++;
             }
           } else {
@@ -122,29 +157,21 @@ int main() {
               a |= bit<<j;
             }
             if (z != a) {
-              printf("%zu + %zu = (%zu<>%zu)\n", x, y, z, a);
+              //printf("%zu + %zu = (%zu<>%zu)\n", x, y, z, a);
               fails++;
             }
           }
         }
       }
+      //  end validation display
       //NN_PRINT(nn);
       //NN_PRINT(g);
-      if (fails == 0) printf("OK\n");
-
-      nn_rand(nn, 0, 1);
-      iter = 0;
+      printf("%zu validation failures\n", fails);
+      // free previous nn
+      nn_free(nn);
+      nn_free(g);
     }
-    iter++;
-    BeginDrawing();
-    ClearBackground(BLACK);
-    DrawText("NN Raylib", 10, 10, 30, RAYWHITE);
-    DrawText(TextFormat("Iter: %d", iter), 10, 50, 30, RAYWHITE);
-    DrawText(TextFormat("Cost: %f", nn_cost(nn, ti, to)), 10, 90, 30, RAYWHITE);
-    nn_backprop(nn, g, ti, to);
-    nn_learn(nn, g, rate);
-    nn_draw(nn);
-    EndDrawing();
+
   }
   CloseWindow();
   return 0;

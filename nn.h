@@ -17,6 +17,10 @@
 #define NN_ASSERT assert
 #endif
 
+#ifndef NN_FREE
+#define NN_FREE free
+#endif
+
 typedef struct {
   size_t rows;
   size_t cols;
@@ -44,6 +48,7 @@ float swish(float x);
 
 // Mat function declares
 Mat mat_alloc(size_t rows, size_t cols);
+void mat_free(Mat m);
 void mat_fill(Mat m, float x);
 void mat_dot(Mat dst, Mat a, Mat b);
 void mat_sum(Mat dst, Mat a);
@@ -61,6 +66,7 @@ void mat_swish(Mat m);
 // NN function declares
 
 NN nn_alloc(size_t *arch, size_t arch_count);
+void nn_free(NN nn);
 void nn_zero(NN nn);
 void nn_fill(NN nn, float n);
 void nn_print(NN nn, const char *name, size_t padding);
@@ -108,6 +114,10 @@ Mat mat_alloc(size_t rows, size_t cols) {
   m.es = (float *)NN_MALLOC(sizeof(*m.es)*rows*cols);
   NN_ASSERT(m.es != NULL);
   return m;
+}
+
+void mat_free(Mat m) {
+  NN_FREE(m.es);
 }
 
 void mat_dot(Mat dst, Mat a, Mat b) {
@@ -235,6 +245,23 @@ NN nn_alloc(size_t *arch, size_t arch_count) {
   }
 
   return nn;
+}
+
+void nn_free(NN nn) {
+  size_t count = nn.count;
+
+  mat_free(nn.as[0]);
+  for (size_t i = 1;i < count+1;i++) {
+    mat_free(nn.ws[i-1]);
+    mat_free(nn.bs[i-1]);
+    mat_free(nn.as[i]);
+  }
+  NN_FREE(nn.ws);
+  //NN_ASSERT(nn.ws == NULL);
+  NN_FREE(nn.bs);
+  //NN_ASSERT(nn.bs == NULL);
+  NN_FREE(nn.as);
+  //NN_ASSERT(nn.as == NULL);
 }
 
 void nn_print(NN nn, const char *name, size_t padding) {
