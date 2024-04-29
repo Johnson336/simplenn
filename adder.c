@@ -41,6 +41,8 @@ void nn_draw(NN nn) {
   int nn_x_start = pad_x + (pad_x/2);
   int pad_y = height / ((maxrows + 2));
   DrawRectangleLines(pad_x, pad_y, width-pad_x*2, height-pad_y*2, RAYWHITE);
+  DrawCircle(pad_x + neuron_radius*2, pad_y + neuron_radius*2, neuron_radius, low_color);
+  DrawCircle(pad_x + neuron_radius*2, pad_y + neuron_radius*4, neuron_radius, high_color);
   for (size_t x = 0;x < cols; x++) {
     int rows = nn.as[x].cols;
     int nn_y_start = pad_y + ((pad_y/2) * ((maxrows+1) - rows));
@@ -146,7 +148,7 @@ int main() {
     EndDrawing();
 
     iter++;
-    if (iter > 20*1000 || nn_cost(nn, ti, to) < 0.001f) {
+    if (iter > 5*1000 || nn_cost(nn, ti, to) < 0.001f) {
       printf("Iters: %d\tFinal cost: %f\tArch: {", iter, nn_cost(nn, ti, to));
       for (size_t i=0;i<nn.count+1;i++) {
         printf(" %zu", nn.as[i].cols);
