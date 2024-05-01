@@ -31,6 +31,6 @@ $(EXECUTABLE): adder.c
 	$(CXX) $(CXX_FLAGS) $^ -o $@ $(LIBRARIES)
 
 clean:
-	-rm -r *.o
+	-rm -r *.o $(EXECUTABLE)
 
 #clang -std=c99 -Wall -Werror -O3 -o visual nn_visual.c -I/usr/local/include -L/usr/local/lib -lm -lraylib -framework Cocoa -framework IOKit -framework OpenGL

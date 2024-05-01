@@ -7,6 +7,7 @@
 //
 #include <math.h>
 #include <stdio.h>
+#include <string.h>
 #ifndef NN_MALLOC
 #include <stdlib.h>
 #define NN_MALLOC malloc
@@ -49,6 +50,8 @@ float swish(float x);
 // Mat function declares
 Mat mat_alloc(size_t rows, size_t cols);
 void mat_free(Mat m);
+void mat_save(FILE *out, Mat m);
+Mat mat_load(FILE *in);
 void mat_fill(Mat m, float x);
 void mat_dot(Mat dst, Mat a, Mat b);
 void mat_sum(Mat dst, Mat a);
@@ -118,6 +121,38 @@ Mat mat_alloc(size_t rows, size_t cols) {
 
 void mat_free(Mat m) {
   NN_FREE(m.es);
+}
+
+void mat_save(FILE *out, Mat m) {
+  const char *magic = "nn.h.mat";
+  fwrite(magic, strlen(magic), 1, out);
+  fwrite(&m.rows, sizeof(m.rows), 1, out);
+  fwrite(&m.cols, sizeof(m.cols), 1, out);
+  for (size_t i = 0;i < m.rows;i++) {
+    size_t n = fwrite(&MAT_AT(m, i, 0), sizeof(*m.es), m.cols, out);
+    while (n < m.cols && !ferror(out)) {
+      size_t j = fwrite(m.es + n, sizeof(*m.es), m.cols - n, out);
+      n += i;
+    }
+  }
+}
+Mat mat_load(FILE *in) {
+
+  uint64_t magic;
+  fread(&magic, sizeof(magic), 1, in);
+  NN_ASSERT(magic == 0x74616d2e682e6e6e);
+  
+  size_t rows, cols;
+  fread(&rows, sizeof(rows), 1, in);
+  fread(&cols, sizeof(cols), 1, in);
+  Mat m = mat_alloc(rows, cols);
+  size_t n = fread(m.es, sizeof(*m.es), rows*cols, in);
+  while (n < rows*cols && !ferror(in)) {
+  size_t k = fread(m.es, sizeof(*m.es) + n, rows*cols - n, in);
+    n += k;
+  }
+  return m;
+
 }
 
 void mat_dot(Mat dst, Mat a, Mat b) {
