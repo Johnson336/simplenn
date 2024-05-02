@@ -40,23 +40,22 @@ Color high_color = {255, 0, 180, 255};
 
 void nn_draw(NN nn, int ox, int oy, int w, int h) {
   int cols = nn.count+1;
-  //int startcol = (width - 40) / cols;
   int maxrows = 0;
   for (int i=0;i<cols;i++) {
     if (nn.as[i].cols > maxrows) {
        maxrows = nn.as[i].cols;
     }
   }
-  float neuron_radius = fminf((float)h / (maxrows*4), 25.0f);
-  int pad_x = w / (cols + 2);
-  int nn_x_start = ox + pad_x*1.5f;
-  int pad_y = h / (maxrows + 2);
-  DrawRectangleLines(ox + pad_x, oy + pad_y, w-pad_x*2, h-pad_y*2, RAYWHITE);
-  // DrawCircle(pad_x + neuron_radius*2, pad_y + neuron_radius*2, neuron_radius, low_color);
-  // DrawCircle(pad_x + neuron_radius*2, pad_y + neuron_radius*4, neuron_radius, high_color);
+  float neuron_radius = fminf((float)h/ (maxrows*4), 25.0f);
+  int pad_x = (w-neuron_radius*8) / (cols-1);
+  int nn_x_start = ox + neuron_radius*4;
+  int pad_y = h / (maxrows);
+  DrawRectangleLines(ox, oy, w, h, RAYWHITE);
+  DrawCircle(ox + neuron_radius*2, oy + neuron_radius*2, neuron_radius, low_color);
+  DrawCircle(ox + neuron_radius*2, oy + neuron_radius*4, neuron_radius, high_color);
   for (size_t x = 0;x < cols; x++) {
     int rows = nn.as[x].cols;
-    int nn_y_start = oy + pad_y + ((pad_y/2) * ((maxrows+1) - rows));
+    int nn_y_start = oy + (pad_y * ((maxrows) - rows+1)/2);
     Color color = {};
     for (size_t y = 0;y < rows;y++) {
       if (x == 0) {
@@ -69,22 +68,23 @@ void nn_draw(NN nn, int ox, int oy, int w, int h) {
         //high_color.a = amt;
         //color = ColorAlphaBlend(low_color, high_color, WHITE);
       }
-      DrawCircle(nn_x_start + x * pad_x, nn_y_start + (y * pad_y), neuron_radius, color);
+      DrawCircle(nn_x_start + (x * pad_x), nn_y_start + (y * pad_y), neuron_radius, color);
       if (x > 0) {
         int prev_rows = nn.as[x-1].cols;
-        int prev_layer_y_start = oy + pad_y + ((pad_y/2) * ((maxrows+1) - prev_rows));
+        int prev_layer_y_start = oy + (pad_y * ((maxrows) - prev_rows+1)/2);
         for (size_t i = 0;i < prev_rows;i++) {
           float amt = sigmoidf(MAT_AT(nn.ws[x-1], i, y));
           Color linecolor = mixColors(low_color, high_color, amt);
           //high_color.a = amt;
           //Color linecolor = ColorAlphaBlend(low_color, high_color, WHITE);
-          float thick = 3.0f;
+          float thick = 1.0f;
           DrawLineEx((Vector2){nn_x_start + ((x-1) * pad_x), prev_layer_y_start + (i * pad_y)}, (Vector2){nn_x_start + x * pad_x, nn_y_start + (y * pad_y)}, thick, linecolor);
         }
       }
     }
   }
 }
+
 
 void cost_plot_minmax(Cost_Plot plot, float *min, float *max) {
   *min = FLT_MAX;
@@ -96,6 +96,7 @@ void cost_plot_minmax(Cost_Plot plot, float *min, float *max) {
   }
 }
 
+
 void plot_cost(Cost_Plot plot, int rx, int ry, int rw, int rh) {
   float min, max;
   cost_plot_minmax(plot, &min, &max);
@@ -105,15 +106,15 @@ void plot_cost(Cost_Plot plot, int rx, int ry, int rw, int rh) {
   DrawRectangleLines(rx, ry, rw, rh, RAYWHITE);
   int steps = 20;
   for (int i=0;i<steps;i++) {
-    DrawLine(rx+i*rh/steps, ry, rx+i*rh/steps, ry+rh, GRAY);
-  }
-  for (int j=0;j<steps;j++) {
-    DrawLine(rx, ry+j*rw/steps, rx+rw, ry+j*rw/steps, GRAY);
+    int x = rx + (i * (rw / steps));
+    DrawLine(x, ry, x, ry+rh, GRAY);
+    int y = ry + (i * (rh / steps));
+    DrawLine(rx, y, rx+rw, y, GRAY);
   }
   for (size_t i = 0;i+1<plot.count;i++) {
     float x = rx + (float)rw/n * i;
     float y = ry + (1-(plot.items[i] - min) / (max - min))*rh;
-    float x2 = rx + (float)rw/n * i+1;
+    float x2 = rx + (float)rw/n * (i+1);
     float y2 = ry + (1-(plot.items[i+1] - min) / (max - min))*rh;
     DrawLineEx((Vector2){x, y}, (Vector2){x2, y2}, rh*0.004, RED);
     DrawCircle(x, y, rh*0.004, RED);
@@ -146,9 +147,6 @@ void ProcessInput() {
   }
 }
 
-#define BITS 4
-#define ARCH_LEN 3
-
 char *args_shift(int *argc, char ***argv) {
   assert(*argc > 0);
   char *result = **argv;
@@ -169,6 +167,8 @@ char *args_shift(int *argc, char ***argv) {
       (da)->items[(da)->count++] = (item); \
     } while (0) \
 
+#define MAX_ITER 10*1000
+
 int main(int argc, char **argv) {
   const char *program = args_shift(&argc, &argv);
   if (argc <= 0) {
@@ -185,8 +185,6 @@ int main(int argc, char **argv) {
   }
   const char *data_file_path = args_shift(&argc, &argv);
 
-
-
   int buffer_len = 0;
   unsigned char *buffer = LoadFileData(arch_file_path, &buffer_len);
 
@@ -196,17 +194,16 @@ int main(int argc, char **argv) {
 
   Arch arch = {0};
 
+  // fill arch dynamic array from external arch file
   String_View content = sv_from_parts((const char *)buffer, buffer_len);
-
   content = sv_trim_left(content);
   while (content.count > 0 && isdigit(content.data[0])) {
     int x = sv_chop_u64(&content);
     da_append(&arch, x);
     content = sv_trim_left(content);
   }
-  
 
-
+  // fill input and output matrices from external data file
   FILE *in = fopen(data_file_path, "rb");
   if (in == NULL) {
     fprintf(stderr, "ERROR: could not read file %s\n", data_file_path);
@@ -238,35 +235,79 @@ int main(int argc, char **argv) {
   MAT_PRINT(ti);
   MAT_PRINT(to);
 
-  InitWindow(width, height, "Gym");
+  InitWindow(width, height, "NN Gym");
+  SetWindowState(FLAG_WINDOW_RESIZABLE);
 
   NN nn = nn_alloc(arch.items, arch.count);
   NN g = nn_alloc(arch.items, arch.count);
-  nn_rand(nn, 0, 1);
-  NN_PRINT(nn);
+  nn_rand(nn, -1, 1);
+  float cost = 3.0f;
   
   float rate = 1;
   Cost_Plot plot = {0};
 
   size_t iter = 0;
+  bool header_flash_visible = true;
+  float header_flash_delay = 1.0f;
+  float header_flash_timer = 0.0f;
+  const char *header_text = "NN Training...";
+  float header_width = MeasureText(header_text, 30);
   while (!WindowShouldClose()) {
-    for (size_t i=0;i<10 && i < 5000;i++) {
-      if (iter < 5000) {
-        nn_backprop(nn, g, ti, to);
-        nn_learn(nn, g, rate);
-        iter++;
-        if (iter%10 == 0) {
-          da_append(&plot, nn_cost(nn, ti, to));
-        }
+    // reset bounds based on current window size
+    Vector2 dpi = GetWindowScaleDPI();
+    width = GetRenderWidth()/dpi.x;
+    height = GetRenderHeight()/dpi.y;
+    // check for -1 here to avoid triggering on the first cycle
+    if (iter == -1) {
+      iter = 0;
+      // clear our plot dynamic array
+      plot.count = 0;
+      plot.capacity = 0;
+      plot.items = 0;
+      // clear out arch dynamic array
+      arch.count = 0;
+      arch.capacity = 0;
+      arch.items = 0;
+
+      // Create new NN architecture of random size
+      da_append(&arch, in_size);
+      size_t columns = GetRandomValue(1, 6);
+      for (size_t i = 0;i<columns;i++) {
+        da_append(&arch, GetRandomValue(in_size, 4*in_size));
+      }
+      da_append(&arch, out_size);
+
+      nn = nn_alloc(arch.items, arch.count);
+      g = nn_alloc(arch.items, arch.count);
+      nn_rand(nn, -1, 1);
+
+      cost = 3.0f; // reset arbitrary starting cost, just needs to be above 0.001
+    }
+    // run 10 cycles before drawing to screen to increase FPS
+    for (size_t i=0;((i<10) && (i < MAX_ITER) && (cost >= 0.001f));i++) {
+      nn_backprop(nn, g, ti, to);
+      nn_learn(nn, g, rate);
+      iter++;
+      cost = nn_cost(nn, ti, to);
+      if (iter%20 == 0) {
+        da_append(&plot, cost);
       }
     }
     ProcessInput();
     BeginDrawing();
     ClearBackground(BLACK);
     DrawFPS(width-100, 10);
-    DrawText("NN Raylib", 10, 10, 30, RAYWHITE);
+
+    header_flash_timer += GetFrameTime();
+    if (header_flash_timer >= header_flash_delay) {
+      header_flash_timer = 0.0f;
+      header_flash_visible = !header_flash_visible;
+    }
+    if (header_flash_visible) {
+      DrawText(header_text, width/2 - header_width/2, 10, 30, RAYWHITE);
+    }
     DrawText(TextFormat("Iter: %d", iter), 10, 50, 30, RAYWHITE);
-    DrawText(TextFormat("Cost: %f", nn_cost(nn, ti, to)), 10, 90, 30, RAYWHITE);
+    DrawText(TextFormat("Cost: %f", cost), 10, 90, 30, RAYWHITE);
     int rw, rh, rx, ry;
     rw = width/2;
     rh = height*((float)2/3);
@@ -279,6 +320,20 @@ int main(int argc, char **argv) {
     ry = height/2 - (float)rh/2;
     plot_cost(plot, rx, ry, rw, rh);
     EndDrawing();
+
+    if (iter >= MAX_ITER || cost < 0.001f) {
+      printf("Iters: %zu\tFinal cost: %f\tArch: {", iter, cost);
+      for (size_t i=0;i<nn.count+1;i++) {
+        printf(" %zu", nn.as[i].cols);
+      }
+      printf(" }\n");
+      iter = -1;
+      // free allocated memory
+      nn_free(nn);
+      nn_free(g);
+      free(plot.items);
+      free(arch.items);
+    }
   }
 
 

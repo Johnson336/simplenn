@@ -11,6 +11,11 @@
 float width = 1600;
 float height = 1200;
 
+typedef struct {
+  size_t *items;
+  size_t count;
+  size_t capacity;
+} Arch;
 
 typedef struct {
   float *items;
@@ -148,6 +153,7 @@ void ProcessInput() {
 #define MAX_ITER 5*1000
 
 int main() {
+  // seed input and output matrices based on adder truth table
   srand(time(0));
   size_t n = (1<<BITS);
   size_t rows = n*n;
@@ -172,8 +178,7 @@ int main() {
   //NN g = nn_alloc(arch,ARRAY_LEN(arch));
   NN nn;
   NN g;
-  size_t arch[] = {};
-  //NN_PRINT(nn);
+  Arch arch = {0};
   float rate = 1.001;
   Cost_Plot plot = {0};
   float cost = 3.0f;
@@ -183,26 +188,33 @@ int main() {
   InitWindow(width, height, "NN Raylib");
   SetWindowState(FLAG_WINDOW_RESIZABLE);
   while (!WindowShouldClose()) {
+    // reset bounds based on current window size
     Vector2 dpi = GetWindowScaleDPI();
     width = GetRenderWidth()/dpi.x;
     height = GetRenderHeight()/dpi.y;
     if (iter == 0) {
-      //NN_PRINT(nn);
-      // Create new NN architecture of random size
+      // clear our plot dynamic array
       plot.count = 0;
       plot.capacity = 0;
       plot.items = 0;
-      cost = 3.0f;
+      // clear out arch dynamic array
+      arch.count = 0;
+      arch.capacity = 0;
+      arch.items = 0;
+
+      // Create new NN architecture of random size
+      da_append(&arch, 2*BITS);
       size_t columns = GetRandomValue(1, 6);
-      size_t arch[columns+2];
-      arch[0] = 2*BITS;
-      arch[columns+1] = BITS+1;
-      for (size_t i = 1;i<columns+1;i++) {
-        arch[i] = GetRandomValue(2*BITS, 6*BITS);
+      for (size_t i = 0;i<columns;i++) {
+        da_append(&arch, GetRandomValue(2*BITS, 6*BITS));
       }
-      nn = nn_alloc(arch, ARRAY_LEN(arch));
-      g = nn_alloc(arch, ARRAY_LEN(arch));
+      da_append(&arch, BITS+1);
+
+      nn = nn_alloc(arch.items, arch.count);
+      g = nn_alloc(arch.items, arch.count);
       nn_rand(nn, -1, 1);
+
+      cost = 3.0f; // reset arbitrary starting cost, just needs to be above 0.001
     }
 
     // run 10 cycles before drawing to screen to increase FPS
@@ -237,7 +249,7 @@ int main() {
 
     EndDrawing();
 
-    if (iter > MAX_ITER || cost < 0.001f) {
+    if (iter >= MAX_ITER || cost < 0.001f) {
       printf("Iters: %d\tFinal cost: %f\tArch: {", iter, cost);
       for (size_t i=0;i<nn.count+1;i++) {
         printf(" %zu", nn.as[i].cols);
@@ -280,6 +292,7 @@ int main() {
       nn_free(nn);
       nn_free(g);
       free(plot.items);
+      free(arch.items);
     }
   }
   CloseWindow();
