@@ -74,7 +74,7 @@ int main(int argc, char **argv) {
 
   printf("%s size %dx%d %d bits\n", img2_file_path, img2_width, img2_height, img2_comp*8);
 
-  size_t arch[] = {3, 31, 26, 32, 17, 31, 1};
+  size_t arch[] = {3, 12, 12, 1};
   NN nn = nn_alloc(arch, ARRAY_LEN(arch));
   NN g = nn_alloc(arch, ARRAY_LEN(arch));
 
@@ -134,8 +134,8 @@ int main(int argc, char **argv) {
   InitWindow(width, height, "NN Img2Png");
   //SetWindowState(FLAG_WINDOW_RESIZABLE);
 
-  size_t out_width = 112;
-  size_t out_height = 112;
+  size_t out_width = img1_width;
+  size_t out_height = img1_height;
   uint8_t *out1_pixels = malloc(sizeof(*out1_pixels)*out_width*out_height);
   assert(out1_pixels != NULL);
 
@@ -243,9 +243,9 @@ int main(int argc, char **argv) {
     DrawText("SimpleNN Generated", 530, 140, 30, WHITE);
     DrawText("Original", 150, 140, 30, WHITE);
     DrawTextureEx(input_texture1, (Vector2){20, 170}, 0, 10, WHITE);
-    DrawTextureEx(preview_texture1, (Vector2){450, 170}, 0, 2.5, WHITE);
+    DrawTextureEx(preview_texture1, (Vector2){450, 170}, 0, 10, WHITE);
     DrawTextureEx(input_texture2, (Vector2){20, 400}, 0, 10, WHITE);
-    DrawTextureEx(preview_texture2, (Vector2){450, 400}, 0, 2.5, WHITE);
+    DrawTextureEx(preview_texture2, (Vector2){450, 400}, 0, 10, WHITE);
 
     
 
