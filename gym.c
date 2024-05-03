@@ -9,6 +9,8 @@
 
 float width = 1600;
 float height = 1200;
+// pause will stop program from repeating forever
+bool paused = true;
 
 typedef struct {
   size_t *items;
@@ -145,6 +147,9 @@ void ProcessInput() {
     height += mouseDelta.y;
     SetWindowSize(width, height);
   }
+  if (IsKeyPressed(KEY_SPACE)) {
+    paused = !paused;
+  }
 }
 
 char *args_shift(int *argc, char ***argv) {
@@ -167,7 +172,7 @@ char *args_shift(int *argc, char ***argv) {
       (da)->items[(da)->count++] = (item); \
     } while (0) \
 
-#define MAX_ITER 10*1000
+#define MAX_ITER 20*1000
 
 int main(int argc, char **argv) {
   const char *program = args_shift(&argc, &argv);
@@ -247,6 +252,8 @@ int main(int argc, char **argv) {
   Cost_Plot plot = {0};
 
   size_t iter = 0;
+
+
   bool header_flash_visible = true;
   float header_flash_delay = 1.0f;
   float header_flash_timer = 0.0f;
@@ -258,7 +265,7 @@ int main(int argc, char **argv) {
     width = GetRenderWidth()/dpi.x;
     height = GetRenderHeight()/dpi.y;
     // check for -1 here to avoid triggering on the first cycle
-    if (iter == -1) {
+    if (iter == -1 && !paused) {
       iter = 0;
       // clear our plot dynamic array
       plot.count = 0;
@@ -284,7 +291,7 @@ int main(int argc, char **argv) {
       cost = 3.0f; // reset arbitrary starting cost, just needs to be above 0.001
     }
     // run 10 cycles before drawing to screen to increase FPS
-    for (size_t i=0;((i<10) && (i < MAX_ITER) && (cost >= 0.001f));i++) {
+    for (size_t i=0;((i<10) && (iter < MAX_ITER) && (cost >= 0.001f) && !paused);i++) {
       nn_backprop(nn, g, ti, to);
       nn_learn(nn, g, rate);
       iter++;
@@ -298,7 +305,9 @@ int main(int argc, char **argv) {
     ClearBackground(BLACK);
     DrawFPS(width-100, 10);
 
-    header_flash_timer += GetFrameTime();
+    if (!paused) {
+      header_flash_timer += GetFrameTime();
+    }
     if (header_flash_timer >= header_flash_delay) {
       header_flash_timer = 0.0f;
       header_flash_visible = !header_flash_visible;

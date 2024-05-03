@@ -19,15 +19,15 @@ LIBRARIES := -lm -lraylib
 ifeq ($(PLATFORM_OS),OSX)
   LIBRARIES += -framework Cocoa -framework IOKit -framework OpenGL
 endif
-EXECUTABLE := gym
+EXECUTABLE := img2mat
 
 all: $(EXECUTABLE)
 
 run: clean all
 	clear
-	./$(EXECUTABLE) adder.arch adder.mat
+	./$(EXECUTABLE) input.png
 
-$(EXECUTABLE): gym.c
+$(EXECUTABLE): img2mat.c
 	$(CXX) $(CXX_FLAGS) $^ -o $@ $(LIBRARIES)
 
 clean:
