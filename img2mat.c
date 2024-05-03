@@ -19,10 +19,13 @@ char *args_shift(int *argc, char ***argv) {
 
 float width = 1200;
 float height = 800;
-float MAX_ITER = 100 * 1000;
+size_t MAX_ITER = 10 * 1000;
 size_t iter = 0;
 float cost = 3.0f;
+float rate = 1.0f;
 bool paused = true;
+
+
 
 void ProcessInput() {
   if (IsKeyPressed(KEY_SPACE)) {
@@ -75,6 +78,8 @@ int main(int argc, char **argv) {
     }
   }
 
+  mat_shuffle_rows(t);
+
   Mat ti = {
     .rows = t.rows,
     .cols = 2,
@@ -89,8 +94,12 @@ int main(int argc, char **argv) {
     .es = &MAT_AT(t, 0, ti.cols),
   };
 
-  MAT_PRINT(ti);
-  MAT_PRINT(to);
+  //MAT_PRINT(ti);
+  //MAT_PRINT(to);
+  const char *mat_file_path = "img.mat";
+  FILE *mat_output = fopen(mat_file_path, "wb");
+  mat_save(mat_output, t);
+  fclose(mat_output);
 
   InitWindow(width, height, "NN Img2Png");
   //SetWindowState(FLAG_WINDOW_RESIZABLE);
@@ -106,11 +115,16 @@ int main(int argc, char **argv) {
   Image input_image = LoadImage(img_file_path);
   Texture2D input_texture = LoadTextureFromImage(input_image);
 
-  float rate = 1.0f;
-  size_t arch[] = {2, 6, 6, 8, 8, 1};
+  size_t arch[] = {2, 8, 8, 1};
   NN nn = nn_alloc(arch, ARRAY_LEN(arch));
   NN g = nn_alloc(arch, ARRAY_LEN(arch));
   nn_rand(nn, -1, 1);
+
+  size_t batch_size = 28;
+  size_t batch_count = (t.rows + batch_size - 1) / batch_size;
+  size_t batches_per_frame = 100;
+  size_t batch_begin = 0;
+  float average_cost = 0.0f;
 
   while (!WindowShouldClose()) {
 
@@ -121,11 +135,37 @@ int main(int argc, char **argv) {
     height = GetRenderHeight()/dpi.y;
     */
 
-    for (size_t i=0;i<10 && iter < MAX_ITER && !paused;i++) {
-      nn_backprop(nn, g, ti, to);
+    for (size_t i=0;i<batches_per_frame && iter < MAX_ITER && !paused;i++) {
+      size_t size = batch_size;
+      if (batch_begin + batch_size >= t.rows) {
+        size = t.rows - batch_begin;
+      }
+
+      Mat batch_ti = {
+        .rows = size,
+        .cols = 2,
+        .stride = t.stride,
+        .es = &MAT_AT(t, batch_begin, 0),
+      };
+
+      Mat batch_to = {
+        .rows = size,
+        .cols = 1,
+        .stride = t.stride,
+        .es = &MAT_AT(t, batch_begin, batch_ti.cols),
+      };
+      
+      
+      nn_backprop(nn, g, batch_ti, batch_to);
       nn_learn(nn, g, rate);
-      iter++;
-      cost = nn_cost(nn, ti, to);
+      average_cost += nn_cost(nn, batch_ti, batch_to);
+      batch_begin += batch_size;
+
+      if (batch_begin >= t.rows) {
+        iter++;
+        average_cost = 0.0f;
+        batch_begin = 0;
+      }
       if (iter%100==0) {
         for (size_t y = 0;y < out_height;y++) {
           for (size_t x = 0;x < out_width;x++) {
@@ -147,7 +187,7 @@ int main(int argc, char **argv) {
     DrawFPS(width-100, 10);
 
     DrawText(TextFormat("Iter: %d", iter), 10, 50, 30, RAYWHITE);
-    DrawText(TextFormat("Cost: %f", cost), 10, 90, 30, RAYWHITE);
+    //DrawText(TextFormat("Cost: %f", cost), 10, 90, 30, RAYWHITE);
 
     DrawText("SimpleNN Generated", 630, 140, 30, WHITE);
     DrawText("Original", 250, 140, 30, WHITE);

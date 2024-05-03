@@ -5,6 +5,7 @@
 // Mat di = { .rows = 4, .cols = 2, .stride = 3, .es = d };
 // Mat do = { .rows = 4, .cols = 1, .stride = 3, .es = d };
 //
+#include <float.h>
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -56,6 +57,7 @@ void mat_fill(Mat m, float x);
 void mat_dot(Mat dst, Mat a, Mat b);
 void mat_sum(Mat dst, Mat a);
 void mat_print(Mat m, const char *name, size_t padding);
+void mat_shuffle_rows(Mat m);
 void mat_rand(Mat m, float low, float high);
 Mat mat_row(Mat m, size_t row);
 void mat_copy(Mat dst, Mat src);
@@ -82,7 +84,6 @@ void nn_learn(NN nn, NN g, float rate);
 #define NN_PRINT(nn) nn_print(nn, #nn, 0)
 #define NN_INPUT(nn) (nn).as[0]
 #define NN_OUTPUT(nn) (nn).as[(nn).count]
-
 
 
 #endif // __NN_H
@@ -467,5 +468,134 @@ void nn_learn(NN nn, NN g, float rate) {
     }
   } 
 }
+
+// 5 - 2 = hat
+// 0 1 2 3 4
+// 5 6 4 3 7
+//     ^ 
+
+void mat_shuffle_rows(Mat m) {
+  for (size_t i = 0;i < m.rows;i++) {
+    size_t j = i + rand()%(m.rows - i);
+    if (i != j) {
+      for (size_t k = 0;k < m.cols;k++) {
+        float t = MAT_AT(m, i, k);
+        MAT_AT(m, i, k) = MAT_AT(m, j, k);
+        MAT_AT(m, j, k) = t;
+      }
+    }
+  }
+}
+
+#ifdef NN_ENABLE_GYM
+#include "/usr/local/include/raylib.h"
+
+typedef struct {
+  float *items;
+  size_t count;
+  size_t capacity;
+} Cost_Plot;
+
+Color mixColors(Color c1, Color c2, float amt);
+void nn_draw(NN nn, int rx, int ry, int rw, int rh);
+void cost_plot_minmax(Cost_Plot plot, float *min, float *max);
+void plot_cost(Cost_Plot plot, int rx, int ry, int rw, int rh);
+
+Color mixColors(Color c1, Color c2, float amt) {
+  return (Color) {
+    ((c1.r * amt) + (c2.r * (1-amt))),
+    ((c1.g * amt) + (c2.g * (1-amt))),
+    ((c1.b * amt) + (c2.b * (1-amt))),
+    ((c1.a * amt) + (c2.a * (1-amt)))
+  };
+}
+
+Color low_color = {0, 0, 0, 0};
+Color high_color = {255, 0, 180, 255};
+
+void nn_draw(NN nn, int rx, int ry, int rw, int rh) {
+  int cols = nn.count+1;
+  int maxrows = 0;
+  for (int i=0;i<cols;i++) {
+    if (nn.as[i].cols > maxrows) {
+       maxrows = nn.as[i].cols;
+    }
+  }
+  float neuron_radius = fminf((float)rh/ (maxrows*4), 25.0f);
+  int pad_x = (rw-neuron_radius*8) / (cols-1);
+  int nn_x_start = rx + neuron_radius*4;
+  int pad_y = rh / (maxrows);
+  DrawRectangleLines(rx, ry, rw, rh, RAYWHITE);
+  DrawCircle(rx + neuron_radius*2, ry + neuron_radius*2, neuron_radius, low_color);
+  DrawCircle(rx + neuron_radius*2, ry + neuron_radius*4, neuron_radius, high_color);
+  for (size_t x = 0;x < cols; x++) {
+    int rows = nn.as[x].cols;
+    int nn_y_start = ry + ((float)pad_y * ((maxrows) - rows+1)/2);
+    Color color = {};
+    for (size_t y = 0;y < rows;y++) {
+      if (x == 0) {
+        // first column is gray
+        color = GRAY;
+      } else {
+        // second column and up are colored by their bias
+        float amt = sigmoidf(MAT_AT(nn.bs[x-1], 0, y));
+        color = mixColors(low_color, high_color, amt);
+        //high_color.a = amt;
+        //color = ColorAlphaBlend(low_color, high_color, WHITE);
+      }
+      DrawCircle(nn_x_start + (x * pad_x), nn_y_start + (y * pad_y), neuron_radius, color);
+      if (x > 0) {
+        int prev_rows = nn.as[x-1].cols;
+        int prev_layer_y_start = ry + ((float)pad_y * ((maxrows) - prev_rows+1)/2);
+        for (size_t i = 0;i < prev_rows;i++) {
+          float amt = sigmoidf(MAT_AT(nn.ws[x-1], i, y));
+          Color linecolor = mixColors(low_color, high_color, amt);
+          //high_color.a = amt;
+          //Color linecolor = ColorAlphaBlend(low_color, high_color, WHITE);
+          float thick = 1.0f;
+          DrawLineEx((Vector2){nn_x_start + (((float)x-1) * pad_x), prev_layer_y_start + ((float)i * pad_y)}, (Vector2){nn_x_start + (float)x * pad_x, nn_y_start + ((float)y * pad_y)}, thick, linecolor);
+        }
+      }
+    }
+  }
+
+}
+
+void cost_plot_minmax(Cost_Plot plot, float *min, float *max) {
+  *min = FLT_MAX;
+  *max = FLT_MIN;
+
+  for (size_t i = 0;i<plot.count;i++) {
+    if (*max < plot.items[i]) *max = plot.items[i];
+    if (*min > plot.items[i]) *min = plot.items[i];
+  }
+}
+
+void plot_cost(Cost_Plot plot, int rx, int ry, int rw, int rh) {
+  float min, max;
+  cost_plot_minmax(plot, &min, &max);
+  if (min > 0) min = 0;
+  size_t n = plot.count;
+  if (n < 100) n = 100;
+  DrawRectangleLines(rx, ry, rw, rh, RAYWHITE);
+  int steps = 20;
+  for (int i=0;i<steps;i++) {
+    int x = rx + (i * (rw / steps));
+    DrawLine(x, ry, x, ry+rh, GRAY);
+    int y = ry + (i * (rh / steps));
+    DrawLine(rx, y, rx+rw, y, GRAY);
+  }
+  for (size_t i = 0;i+1<plot.count;i++) {
+    float x = rx + (float)rw/n * i;
+    float y = ry + (1-(plot.items[i] - min) / (max - min))*rh;
+    float x2 = rx + (float)rw/n * (i+1);
+    float y2 = ry + (1-(plot.items[i+1] - min) / (max - min))*rh;
+    DrawLineEx((Vector2){x, y}, (Vector2){x2, y2}, rh*0.004, RED);
+    DrawCircle(x, y, rh*0.004, RED);
+  }
+
+}
+
+#endif // NN_ENABLE_GYM
 
 #endif // NN_IMPLEMENTATION

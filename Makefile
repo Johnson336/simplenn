@@ -23,6 +23,11 @@ EXECUTABLE := img2mat
 
 all: $(EXECUTABLE)
 
+generate: clean all
+	clear
+	$(CXX) $(CXX_FLAGS) -o gym gym.c $(LIBRARIES)
+	./gym img.arch img.mat
+
 run: clean all
 	clear
 	./$(EXECUTABLE) input.png
