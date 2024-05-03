@@ -65,7 +65,7 @@ char *args_shift(int *argc, char ***argv) {
       (da)->items[(da)->count++] = (item); \
     } while (0) \
 
-#define MAX_ITER 10*1000
+#define MAX_ITER 5*1000
 
 int main(int argc, char **argv) {
   const char *program = args_shift(&argc, &argv);
@@ -116,7 +116,6 @@ int main(int argc, char **argv) {
   size_t out_size = arch.items[arch.count-1];
   NN_ASSERT(t.cols == (in_size + out_size));
 
-  //mat_shuffle_rows(t);
 
   Mat ti = {
     .rows = t.rows,
@@ -203,14 +202,14 @@ int main(int argc, char **argv) {
 
       Mat batch_ti = {
         .rows = size,
-        .cols = 2,
+        .cols = NN_INPUT(nn).cols,
         .stride = t.stride,
         .es = &MAT_AT(t, batch_begin, 0),
       };
 
       Mat batch_to = {
         .rows = size,
-        .cols = 1,
+        .cols = NN_OUTPUT(nn).cols,
         .stride = t.stride,
         .es = &MAT_AT(t, batch_begin, batch_ti.cols),
       };
@@ -226,6 +225,7 @@ int main(int argc, char **argv) {
         da_append(&plot, average_cost/batch_count);
         average_cost = 0.0f;
         batch_begin = 0;
+        mat_shuffle_rows(t);
       }
     }
     ProcessInput();
@@ -244,7 +244,7 @@ int main(int argc, char **argv) {
       DrawText(header_text, width/2 - header_width/2, 10, 30, RAYWHITE);
     }
     DrawText(TextFormat("Iter: %d", iter), 10, 50, 20, RAYWHITE);
-    //DrawText(TextFormat("Cost: %f", average_cost), 10, 70, 20, RAYWHITE);
+    DrawText(TextFormat("Cost: %f", (plot.count > 0 ? plot.items[plot.count-1] : 0)), 10, 70, 20, RAYWHITE);
     int rw, rh, rx, ry;
     rw = width/2;
     rh = height*((float)2/3);
@@ -259,7 +259,7 @@ int main(int argc, char **argv) {
     EndDrawing();
 
     if (iter >= MAX_ITER) {
-      printf("Iters: %zu\tFinal cost: %f\tArch: {", iter, average_cost);
+      printf("Iters: %zu\tFinal cost: %f\tArch: {", iter, (plot.count > 0 ? plot.items[plot.count-1] : 0));
       for (size_t i=0;i<nn.count+1;i++) {
         printf(" %zu", nn.as[i].cols);
       }

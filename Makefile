@@ -30,7 +30,7 @@ generate: clean all
 
 run: clean all
 	clear
-	./$(EXECUTABLE) input.png
+	./$(EXECUTABLE) input.png 3191.png
 
 $(EXECUTABLE): img2mat.c
 	$(CXX) $(CXX_FLAGS) $^ -o $@ $(LIBRARIES)

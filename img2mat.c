@@ -36,32 +36,54 @@ void ProcessInput() {
 int main(int argc, char **argv) {
   const char *program = args_shift(&argc, &argv);
   if (argc <= 0) {
-    fprintf(stderr, "Usage: %s <input.png>\n", program);
+    fprintf(stderr, "Usage: %s <image1> <image2>\n", program);
     fprintf(stderr, "ERROR: No input file given\n");
     return 1;
   }
-  const char *img_file_path = args_shift(&argc, &argv);
+  const char *img1_file_path = args_shift(&argc, &argv);
+  if (argc <= 0) {
+    fprintf(stderr, "Usage: %s <image1> <image2>\n", program);
+    fprintf(stderr, "ERROR: No input file given\n");
+    return 1;
+  }
+  const char *img2_file_path = args_shift(&argc, &argv);
   
-  int img_width, img_height, img_comp;
-  uint8_t *img_pixels = (uint8_t *)stbi_load(img_file_path, &img_width, &img_height, &img_comp, 0);
-  if (img_pixels == NULL) {
-    fprintf(stderr, "ERROR: could not read image %s\n", img_file_path);
+  int img1_width, img1_height, img1_comp;
+  uint8_t *img1_pixels = (uint8_t *)stbi_load(img1_file_path, &img1_width, &img1_height, &img1_comp, 0);
+  if (img1_pixels == NULL) {
+    fprintf(stderr, "ERROR: could not read image %s\n", img1_file_path);
     return 1;
   }
-  if (img_comp != 1) {
-    fprintf(stderr, "ERROR: the image %s is %d bits image. Only 8 bit grayscale images are supported\n", img_file_path, img_comp*8);
+  if (img1_comp != 1) {
+    fprintf(stderr, "ERROR: the image %s is %d bits image. Only 8 bit grayscale images are supported\n", img1_file_path, img1_comp*8);
     return 1;
   }
 
-  printf("%s size %dx%d %d bits\n", img_file_path, img_width, img_height, img_comp*8);
+  printf("%s size %dx%d %d bits\n", img1_file_path, img1_width, img1_height, img1_comp*8);
 
+  int img2_width, img2_height, img2_comp;
+  uint8_t *img2_pixels = (uint8_t *)stbi_load(img2_file_path, &img2_width, &img2_height, &img2_comp, 0);
+  if (img2_pixels == NULL) {
+    fprintf(stderr, "ERROR: could not read image %s\n", img2_file_path);
+    return 1;
+  }
+  if (img2_comp != 1) {
+    fprintf(stderr, "ERROR: the image %s is %d bits image. Only 8 bit grayscale images are supported\n", img2_file_path, img2_comp*8);
+    return 1;
+  }
+
+  printf("%s size %dx%d %d bits\n", img2_file_path, img2_width, img2_height, img2_comp*8);
+
+  size_t arch[] = {3, 31, 26, 32, 17, 31, 1};
+  NN nn = nn_alloc(arch, ARRAY_LEN(arch));
+  NN g = nn_alloc(arch, ARRAY_LEN(arch));
 
   // allocate training data
   // rows = total pixels in image, width * height
   // cols = architecture of neural network
   // 2 inputs = x, y  (coords of pixel)
   // 1 output = b     (brightness of grayscale pixel)
-  Mat t = mat_alloc(img_width*img_height, 3);
+  Mat t = mat_alloc(img1_width*img1_height + img2_width*img2_height, NN_INPUT(nn).cols + NN_OUTPUT(nn).cols);
 
 
   // normalized coordinates from 0 - 1
@@ -69,27 +91,35 @@ int main(int argc, char **argv) {
   // x = x/w
   // y / height = 0-1
   // y = y/h
-  for (int y = 0; y < img_height;y++) {
-    for (int x = 0;x < img_width;x++) {
-      size_t i = y*img_width + x;
-      MAT_AT(t, i, 0) = (float)x/(img_width - 1);
-      MAT_AT(t, i, 1) = (float)y / (img_height-1);
-      MAT_AT(t, i, 2) = img_pixels[i]/255.f;
+  for (int y = 0; y < img1_height;y++) {
+    for (int x = 0;x < img1_width;x++) {
+      size_t i = y*img1_width + x;
+      MAT_AT(t, i, 0) = (float)x / (img1_width - 1);
+      MAT_AT(t, i, 1) = (float)y / (img1_height - 1);
+      MAT_AT(t, i, 2) = 0.0f;
+      MAT_AT(t, i, 3) = img1_pixels[i]/255.f;
+    }
+  }
+  for (int y = 0; y < img2_height;y++) {
+    for (int x = 0;x < img2_width;x++) {
+      size_t i = img1_width*img1_height + y*img2_width + x;
+      MAT_AT(t, i, 0) = (float)x / (img2_width - 1);
+      MAT_AT(t, i, 1) = (float)y / (img2_height - 1);
+      MAT_AT(t, i, 2) = 1.0f;
+      MAT_AT(t, i, 3) = img2_pixels[y*img2_width + x]/255.f;
     }
   }
 
-  mat_shuffle_rows(t);
-
   Mat ti = {
     .rows = t.rows,
-    .cols = 2,
+    .cols = NN_INPUT(nn).cols,
     .stride = t.stride,
     .es = &MAT_AT(t, 0, 0),
-  };
+ };
 
   Mat to = {
     .rows = t.rows,
-    .cols = 1,
+    .cols = NN_OUTPUT(nn).cols,
     .stride = t.stride,
     .es = &MAT_AT(t, 0, ti.cols),
   };
@@ -104,20 +134,26 @@ int main(int argc, char **argv) {
   InitWindow(width, height, "NN Img2Png");
   //SetWindowState(FLAG_WINDOW_RESIZABLE);
 
-  size_t out_width = 512;
-  size_t out_height = 512;
-  uint8_t *out_pixels = malloc(sizeof(*out_pixels)*out_width*out_height);
-  assert(out_pixels != NULL);
+  size_t out_width = 112;
+  size_t out_height = 112;
+  uint8_t *out1_pixels = malloc(sizeof(*out1_pixels)*out_width*out_height);
+  assert(out1_pixels != NULL);
 
-  Image preview_image = GenImageColor(out_width, out_height, BLACK);
-  Texture2D preview_texture = LoadTextureFromImage(preview_image);
+  Image preview_image1 = GenImageColor(out_width, out_height, BLACK);
+  Texture2D preview_texture1 = LoadTextureFromImage(preview_image1);
 
-  Image input_image = LoadImage(img_file_path);
-  Texture2D input_texture = LoadTextureFromImage(input_image);
+  Image input_image1 = LoadImage(img1_file_path);
+  Texture2D input_texture1 = LoadTextureFromImage(input_image1);
+  
+  uint8_t *out2_pixels = malloc(sizeof(*out2_pixels)*out_width*out_height);
+  assert(out2_pixels != NULL);
 
-  size_t arch[] = {2, 8, 8, 1};
-  NN nn = nn_alloc(arch, ARRAY_LEN(arch));
-  NN g = nn_alloc(arch, ARRAY_LEN(arch));
+  Image preview_image2 = GenImageColor(out_width, out_height, BLACK);
+  Texture2D preview_texture2 = LoadTextureFromImage(preview_image2);
+
+  Image input_image2 = LoadImage(img2_file_path);
+  Texture2D input_texture2 = LoadTextureFromImage(input_image2);
+
   nn_rand(nn, -1, 1);
 
   size_t batch_size = 28;
@@ -143,7 +179,7 @@ int main(int argc, char **argv) {
 
       Mat batch_ti = {
         .rows = size,
-        .cols = 2,
+        .cols = 3,
         .stride = t.stride,
         .es = &MAT_AT(t, batch_begin, 0),
       };
@@ -165,20 +201,35 @@ int main(int argc, char **argv) {
         iter++;
         average_cost = 0.0f;
         batch_begin = 0;
+        mat_shuffle_rows(t);
       }
       if (iter%100==0) {
         for (size_t y = 0;y < out_height;y++) {
           for (size_t x = 0;x < out_width;x++) {
             MAT_AT(NN_INPUT(nn), 0, 0) = (float) x / (out_width - 1);
             MAT_AT(NN_INPUT(nn), 0, 1) = (float) y / (out_height - 1);
+            MAT_AT(NN_INPUT(nn), 0, 2) = 0.0f;
             nn_forward(nn);
             uint8_t pixel = MAT_AT(NN_OUTPUT(nn), 0, 0)*255.f;
-            ImageDrawPixel(&preview_image, x, y, (Color){pixel, pixel, pixel, 255});
+            ImageDrawPixel(&preview_image1, x, y, (Color){pixel, pixel, pixel, 255});
           }
         }
         //printf("%zu: cost = %f\n", iter, cost);
-        Color *pixels = LoadImageColors(preview_image);
-        UpdateTexture(preview_texture, pixels);
+        Color *pixels1 = LoadImageColors(preview_image1);
+        UpdateTexture(preview_texture1, pixels1);
+        for (size_t y = 0;y < out_height;y++) {
+          for (size_t x = 0;x < out_width;x++) {
+            MAT_AT(NN_INPUT(nn), 0, 0) = (float) x / (out_width - 1);
+            MAT_AT(NN_INPUT(nn), 0, 1) = (float) y / (out_height - 1);
+            MAT_AT(NN_INPUT(nn), 0, 2) = 1.0f;
+            nn_forward(nn);
+            uint8_t pixel = MAT_AT(NN_OUTPUT(nn), 0, 0)*255.f;
+            ImageDrawPixel(&preview_image2, x, y, (Color){pixel, pixel, pixel, 255});
+          }
+        }
+        //printf("%zu: cost = %f\n", iter, cost);
+        Color *pixels2 = LoadImageColors(preview_image2);
+        UpdateTexture(preview_texture2, pixels2);
       }
     }
 
@@ -187,22 +238,26 @@ int main(int argc, char **argv) {
     DrawFPS(width-100, 10);
 
     DrawText(TextFormat("Iter: %d", iter), 10, 50, 30, RAYWHITE);
-    //DrawText(TextFormat("Cost: %f", cost), 10, 90, 30, RAYWHITE);
+    //DrawText(TextFormat("Cost: %f", 0), 10, 90, 30, RAYWHITE);
 
-    DrawText("SimpleNN Generated", 630, 140, 30, WHITE);
-    DrawText("Original", 250, 140, 30, WHITE);
-    DrawTextureEx(input_texture, (Vector2){20, 170}, 0, 20, WHITE);
-    DrawTextureEx(preview_texture, (Vector2){550, 200}, 0, 1, WHITE);
+    DrawText("SimpleNN Generated", 530, 140, 30, WHITE);
+    DrawText("Original", 150, 140, 30, WHITE);
+    DrawTextureEx(input_texture1, (Vector2){20, 170}, 0, 10, WHITE);
+    DrawTextureEx(preview_texture1, (Vector2){450, 170}, 0, 2.5, WHITE);
+    DrawTextureEx(input_texture2, (Vector2){20, 400}, 0, 10, WHITE);
+    DrawTextureEx(preview_texture2, (Vector2){450, 400}, 0, 2.5, WHITE);
 
     
 
     EndDrawing();
 
     if (iter == MAX_ITER && !paused) {
+      iter = -1;
 
-      for (size_t y = 0;y < img_height;y++) {
-        for (size_t x = 0;x < img_width;x++) {
-          uint8_t pixel = img_pixels[y*img_width + x];
+      /*
+      for (size_t y = 0;y < img1_height;y++) {
+        for (size_t x = 0;x < img1_width;x++) {
+          uint8_t pixel = img1_pixels[y*img1_width + x];
           if (pixel > 0) {
             printf("%3u ", pixel);
           } else {
@@ -212,10 +267,11 @@ int main(int argc, char **argv) {
         printf("\n");
       }
 
-      for (size_t y = 0;y < img_height;y++) {
-        for (size_t x = 0;x < img_width;x++) {
-          MAT_AT(NN_INPUT(nn), 0, 0) = (float) x / (img_width - 1);
-          MAT_AT(NN_INPUT(nn), 0, 1) = (float) y / (img_height - 1);
+      for (size_t y = 0;y < img1_height;y++) {
+        for (size_t x = 0;x < img1_width;x++) {
+          MAT_AT(NN_INPUT(nn), 0, 0) = (float) x / (img1_width - 1);
+          MAT_AT(NN_INPUT(nn), 0, 1) = (float) y / (img1_height - 1);
+          MAT_AT(NN_INPUT(nn), 0, 2) = 1.0f;
           nn_forward(nn);
           uint8_t pixel = MAT_AT(NN_OUTPUT(nn), 0, 0)*255.f;
           if (pixel > 0) {
@@ -227,25 +283,47 @@ int main(int argc, char **argv) {
         printf("\n");
       }
 
+      */
 
       for (size_t y = 0;y < out_height;y++) {
         for (size_t x = 0;x < out_width;x++) {
           MAT_AT(NN_INPUT(nn), 0, 0) = (float) x / (out_width - 1);
           MAT_AT(NN_INPUT(nn), 0, 1) = (float) y / (out_height - 1);
+          MAT_AT(NN_INPUT(nn), 0, 2) = 0.0f;
           nn_forward(nn);
           uint8_t pixel = MAT_AT(NN_OUTPUT(nn), 0, 0)*255.f;
-          out_pixels[y*out_width + x] = pixel;
+          out1_pixels[y*out_width + x] = pixel;
         }
       }
 
 
-      const char *out_file_path = "imgout.png";
-      if (!stbi_write_png(out_file_path, out_width, out_height, 1, out_pixels, out_width*sizeof(*out_pixels))) {
+      const char *out_file_path = "img1out.png";
+      if (!stbi_write_png(out_file_path, out_width, out_height, 1, out1_pixels, out_width*sizeof(*out1_pixels))) {
         fprintf(stderr, "ERROR: could not save image %s\n", out_file_path);
         return 1;
       }
 
-      printf("Generated %s from %s\n", out_file_path, img_file_path);
+      printf("Generated %s from %s\n", out_file_path, img1_file_path);
+
+      for (size_t y = 0;y < out_height;y++) {
+        for (size_t x = 0;x < out_width;x++) {
+          MAT_AT(NN_INPUT(nn), 0, 0) = (float) x / (out_width - 1);
+          MAT_AT(NN_INPUT(nn), 0, 1) = (float) y / (out_height - 1);
+          MAT_AT(NN_INPUT(nn), 0, 2) = 1.0f;
+          nn_forward(nn);
+          uint8_t pixel = MAT_AT(NN_OUTPUT(nn), 0, 0)*255.f;
+          out2_pixels[y*out_width + x] = pixel;
+        }
+      }
+
+
+      out_file_path = "img2out.png";
+      if (!stbi_write_png(out_file_path, out_width, out_height, 1, out2_pixels, out_width*sizeof(*out2_pixels))) {
+        fprintf(stderr, "ERROR: could not save image %s\n", out_file_path);
+        return 1;
+      }
+
+      printf("Generated %s from %s\n", out_file_path, img2_file_path);
     }
   }
 
