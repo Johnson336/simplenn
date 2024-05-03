@@ -1,5 +1,5 @@
 # simplenn
 C header library for simple neural networks
 
-## using SimpleNN to generate numbers
+## SimpleNN learning how to generate and upscale numbers
 ![Generate Demo](demo/img2png-9.gif)<br>
